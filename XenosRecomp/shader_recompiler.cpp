@@ -1113,7 +1113,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
     const auto constantTableContainer = reinterpret_cast<const ConstantTableContainer*>(shaderData + shaderContainer->constantTableOffset);
     constantTableData = reinterpret_cast<const uint8_t*>(&constantTableContainer->constantTable);
 
-    out += "#ifdef __spirv__\n\n";
+    out += "#if defined(__spirv__) && !defined(XENOS_OPENGL)\n\n";
 
 #ifdef UNLEASHED_RECOMP
     bool isMetaInstancer = false;
@@ -1191,6 +1191,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
 
     println("cbuffer {}ShaderConstants : register(b{}, space4)", isPixelShader ? "Pixel" : "Vertex", isPixelShader ? 1 : 0);
     out += "{\n";
+    println("#ifdef XENOS_OPENGL\n\tfloat4 xenosConstants[{}];\n#endif", isPixelShader ? 224 : 256);
 
     for (uint32_t i = 0; i < constantTableContainer->constantTable.constants; i++)
     {
@@ -1201,6 +1202,16 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
         {
             const char* constantName = reinterpret_cast<const char*>(constantTableData + constantInfo->name);
 
+            out += "#ifdef XENOS_OPENGL\n";
+            if (constantInfo->registerCount > 1)
+            {
+                const uint32_t tailCount = (isPixelShader ? 224 : 256) - constantInfo->registerIndex;
+                println("#define {}(INDEX) select((INDEX) < {}, xenosConstants[{} + min(INDEX, {})], 0.0)",
+                    constantName, tailCount, constantInfo->registerIndex.get(), tailCount - 1);
+            }
+            else
+                println("#define {} xenosConstants[{}]", constantName, constantInfo->registerIndex.get());
+            out += "#else\n";
             print("\tfloat4 {}", constantName);
 
             if (constantInfo->registerCount > 1)
@@ -1213,6 +1224,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
                 uint32_t tailCount = (isPixelShader ? 224 : 256) - constantInfo->registerIndex;
                 println("#define {0}(INDEX) select((INDEX) < {1}, {0}[min(INDEX, {2})], 0.0)", constantName, tailCount, tailCount - 1);
             }
+            out += "#endif\n";
         }
     }
 
@@ -1230,6 +1242,11 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
         {
             const char* constantName = reinterpret_cast<const char*>(constantTableData + constantInfo->name);
 
+            out += "#ifdef XENOS_OPENGL\n";
+            for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
+                println("#define {}_Texture{}DescriptorIndex {}", constantName, TEXTURE_DIMENSIONS[j], constantInfo->registerIndex.get());
+            println("#define {}_SamplerDescriptorIndex {}", constantName, constantInfo->registerIndex.get());
+            out += "#else\n";
             for (size_t j = 0; j < std::size(TEXTURE_DIMENSIONS); j++)
             {
                 println("\tuint {}_Texture{}DescriptorIndex : packoffset(c{}.{});",
@@ -1238,6 +1255,7 @@ void ShaderRecompiler::recompile(const uint8_t* shaderData, const std::string_vi
 
             println("\tuint {}_SamplerDescriptorIndex : packoffset(c{}.{});",
                 constantName, 4 * std::size(TEXTURE_DIMENSIONS) + constantInfo->registerIndex / 4, SWIZZLES[constantInfo->registerIndex % 4]);
+            out += "#endif\n";
         }
     }
 

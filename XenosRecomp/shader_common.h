@@ -15,7 +15,7 @@
 #define FLT_MIN asfloat(0xff7fffff)
 #define FLT_MAX asfloat(0x7f7fffff)
 
-#ifdef __spirv__
+#if defined(__spirv__) && !defined(XENOS_OPENGL)
 
 struct PushConstants
 {
@@ -43,14 +43,23 @@ struct PushConstants
     float2 g_HalfPixelOffset : packoffset(c16.z); \
     float g_AlphaThreshold : packoffset(c17.x);
 
+#ifdef XENOS_OPENGL
+uint g_SpecConstants() { return 0; }
+#else
 uint g_SpecConstants();
+#endif
 
 #endif
 
-Texture2D<float4> g_Texture2DDescriptorHeap[] : register(t0, space0);
-Texture3D<float4> g_Texture3DDescriptorHeap[] : register(t0, space1);
-TextureCube<float4> g_TextureCubeDescriptorHeap[] : register(t0, space2);
-SamplerState g_SamplerDescriptorHeap[] : register(s0, space3);
+#ifdef XENOS_OPENGL
+#define XENOS_TEXTURE_COUNT 16
+#else
+#define XENOS_TEXTURE_COUNT
+#endif
+Texture2D<float4> g_Texture2DDescriptorHeap[XENOS_TEXTURE_COUNT] : register(t0, space0);
+Texture3D<float4> g_Texture3DDescriptorHeap[XENOS_TEXTURE_COUNT] : register(t0, space1);
+TextureCube<float4> g_TextureCubeDescriptorHeap[XENOS_TEXTURE_COUNT] : register(t0, space2);
+SamplerState g_SamplerDescriptorHeap[XENOS_TEXTURE_COUNT] : register(s0, space3);
 
 uint2 getTexture2DDimensions(Texture2D<float4> texture)
 {
@@ -177,7 +186,7 @@ float4 tfetchR11G11B10(uint4 value)
 
 float4 tfetchTexcoord(uint swappedTexcoords, float4 value, uint semanticIndex)
 {
-    return (swappedTexcoords & (1ull << semanticIndex)) != 0 ? value.yxwz : value;
+    return (swappedTexcoords & (1u << semanticIndex)) != 0 ? value.yxwz : value;
 }
 
 float4 cube(float4 value, inout CubeMapData cubeMapData)
